@@ -7,13 +7,14 @@ val logbackVersion: String by project
 plugins {
     application
     kotlin("jvm") version "1.4.30"
-    id("com.github.johnrengelman.shadow") version "5.0.0"
+    id("com.github.johnrengelman.shadow") version "6.1.0"
 }
 
 group = "com.flxrs"
 version = "0.0.1"
 application {
     mainClass.set("io.ktor.server.netty.EngineMain")
+    mainClassName = "io.ktor.server.netty.EngineMain"
 }
 
 repositories {
@@ -36,12 +37,12 @@ tasks.withType<KotlinCompile>().configureEach {
     }
 }
 
-tasks.withType<Jar> {
-    manifest {
-        attributes(
-            mapOf(
-                "Main-Class" to application.mainClassName
-            )
-        )
-    }
-}
+//tasks.withType<Jar> {
+//    manifest {
+//        attributes(
+//            mapOf(
+//                "Main-Class" to application.mainClassName
+//            )
+//        )
+//    }
+//}
