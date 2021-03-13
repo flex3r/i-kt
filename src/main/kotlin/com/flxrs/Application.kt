@@ -24,7 +24,7 @@ fun Application.dank() {
     val basicAuthPassword = environment.config.propertyOrNull("ktor.deployment.basicAuthPassword")?.getString() ?: "dank"
     val validCredentials = UserPasswordCredential(basicAuthUser, basicAuthPassword)
 
-    val uploadUrl = environment.config.propertyOrNull("ktor.deployment.uploadUrl")?.getString() ?: "http://i.localhost:8080/"
+    val uploadUrl = environment.config.propertyOrNull("ktor.deployment.uploadUrl")?.getString() ?: "http://localhost:8080/"
     val uploadDirectory = File(environment.config.propertyOrNull("ktor.deployment.uploadDirectory")?.getString() ?: "i").also { dir ->
         if (!dir.exists())
             dir.mkdir()
@@ -63,10 +63,8 @@ fun Application.dank() {
             }
         }
 
-        host(Regex("i\\..+")) {
-            static {
-                files(uploadDirectory)
-            }
+        static {
+            files(uploadDirectory)
         }
     }
 }
