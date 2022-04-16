@@ -1,4 +1,4 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 val ktorVersion: String by project
 val kotlinVersion: String by project
@@ -6,43 +6,35 @@ val logbackVersion: String by project
 
 plugins {
     application
-    kotlin("jvm") version "1.4.30"
-    id("com.github.johnrengelman.shadow") version "6.1.0"
+    kotlin("jvm") version "1.6.20"
+    id("com.github.johnrengelman.shadow") version "7.1.1"
 }
 
 group = "com.flxrs"
-version = "0.0.1"
+version = "0.0.2"
 application {
     mainClass.set("io.ktor.server.netty.EngineMain")
-    mainClassName = "io.ktor.server.netty.EngineMain"
 }
 
 repositories {
     mavenLocal()
-    jcenter()
-    maven { url = uri("https://kotlin.bintray.com/ktor") }
+    mavenCentral()
 }
 
 dependencies {
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-auth:$ktorVersion")
+    implementation("io.ktor:ktor-server-auth:$ktorVersion")
+    implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
+    implementation("io.ktor:ktor-server-default-headers:$ktorVersion")
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
-    testImplementation("io.ktor:ktor-server-tests:$ktorVersion")
 }
 
-tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions {
-        useIR = true
+tasks.withType<ShadowJar> {
+    archiveBaseName.set("i-kt")
+    archiveClassifier.set("")
+    archiveVersion.set("")
+    manifest {
+        attributes(Pair("Main-Class", "io.ktor.server.netty.EngineMain"))
     }
 }
-
-//tasks.withType<Jar> {
-//    manifest {
-//        attributes(
-//            mapOf(
-//                "Main-Class" to application.mainClassName
-//            )
-//        )
-//    }
-//}

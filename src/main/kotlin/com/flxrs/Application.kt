@@ -1,13 +1,15 @@
 package com.flxrs
 
-import io.ktor.application.*
-import io.ktor.auth.*
-import io.ktor.features.*
 import io.ktor.http.*
 import io.ktor.http.content.*
-import io.ktor.request.*
-import io.ktor.response.*
-import io.ktor.routing.*
+import io.ktor.server.application.*
+import io.ktor.server.auth.*
+import io.ktor.server.http.content.*
+import io.ktor.server.plugins.callloging.*
+import io.ktor.server.plugins.defaultheaders.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,18 +18,28 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 
-fun main(args: Array<String>): Unit =
-    io.ktor.server.netty.EngineMain.main(args)
+fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
+@Suppress("unused")
 fun Application.dank() {
-    val basicAuthUser = environment.config.propertyOrNull("ktor.deployment.basicAuthUser")?.getString() ?: "flxrs"
-    val basicAuthPassword = environment.config.propertyOrNull("ktor.deployment.basicAuthPassword")?.getString() ?: "dank"
+    val basicAuthUser = environment.config
+        .propertyOrNull("ktor.deployment.basicAuthUser")
+        ?.getString() ?: "flxrs"
+    val basicAuthPassword = environment.config
+        .propertyOrNull("ktor.deployment.basicAuthPassword")
+        ?.getString() ?: "dank"
+
     val validCredentials = UserPasswordCredential(basicAuthUser, basicAuthPassword)
 
-    val uploadUrl = environment.config.propertyOrNull("ktor.deployment.uploadUrl")?.getString() ?: "http://localhost:8080/"
-    val uploadDirectory = File(environment.config.propertyOrNull("ktor.deployment.uploadDirectory")?.getString() ?: "i").also { dir ->
-        if (!dir.exists())
-            dir.mkdir()
+    val uploadUrl = environment.config
+        .propertyOrNull("ktor.deployment.uploadUrl")
+        ?.getString() ?: "http://localhost:8080/"
+    val uploadPath = environment.config
+        .propertyOrNull("ktor.deployment.uploadDirectory")
+        ?.getString() ?: "i"
+
+    val uploadDirectory = File(uploadPath).also { dir ->
+        if (!dir.exists()) dir.mkdir()
     }
 
     install(DefaultHeaders) {
@@ -49,7 +61,7 @@ fun Application.dank() {
         }
 
         authenticate {
-            post("upload") {
+            post("/upload") {
                 var partData: PartData.FileItem? = null
                 call.receiveMultipart().forEachPart { part ->
                     when (part) {
@@ -97,7 +109,7 @@ suspend fun InputStream.copyToSuspend(
     out: OutputStream,
     bufferSize: Int = DEFAULT_BUFFER_SIZE,
     yieldSize: Int = 4 * 1024 * 1024,
-    dispatcher: CoroutineDispatcher = Dispatchers.IO
+    dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ): Long {
     return withContext(dispatcher) {
         val buffer = ByteArray(bufferSize)
