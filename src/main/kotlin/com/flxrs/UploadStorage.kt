@@ -10,6 +10,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermissions
+import java.security.SecureRandom
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteIfExists
 
@@ -38,8 +39,7 @@ class UploadStorage(
         }
 
     private fun claimName(extension: String?): Path =
-        generateSequence(System.currentTimeMillis()) { it + 1 }.firstNotNullOf { millis ->
-            val name = millis.toString(radix = 36)
+        generateSequence { randomName() }.firstNotNullOf { name ->
             val target =
                 when (extension) {
                     null -> directory.resolve(name)
@@ -52,6 +52,8 @@ class UploadStorage(
             }
         }
 
+    private fun randomName(): String = String(CharArray(NAME_LENGTH) { NAME_ALPHABET[RANDOM.nextInt(NAME_ALPHABET.length)] })
+
     private fun extensionOf(fileName: String?): String? =
         fileName
             ?.substringAfterLast('.', missingDelimiterValue = "")
@@ -59,6 +61,9 @@ class UploadStorage(
             ?.takeIf { it.matches(EXTENSION) }
 
     private companion object {
+        const val NAME_LENGTH = 8
+        const val NAME_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+        val RANDOM = SecureRandom()
         val EXTENSION = Regex("[a-z0-9]{1,10}")
         val FILE_PERMISSIONS = PosixFilePermissions.fromString("rw-r--r--")
     }

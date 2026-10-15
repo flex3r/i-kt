@@ -46,7 +46,7 @@ class UploadTest {
             val url = response.bodyAsText()
             assertTrue(url.startsWith("https://i.example.com/"), url)
             val name = url.removePrefix("https://i.example.com/")
-            assertTrue(name.matches(Regex("[0-9a-z]+\\.png")), name)
+            assertTrue(name.matches(Regex("[0-9a-z]{8}\\.png")), name)
             val stored = directory.resolve(name)
             assertContentEquals(CONTENT, stored.readBytes())
             assertEquals(PosixFilePermissions.fromString("rw-r--r--"), stored.getPosixFilePermissions())
@@ -54,7 +54,7 @@ class UploadTest {
         }
 
     @Test
-    fun `uploads in quick succession get distinct names`() =
+    fun `uploads get distinct names`() =
         uploadTest {
             val names = List(5) { upload(fileName = "cat.png").bodyAsText() }
 
@@ -68,7 +68,7 @@ class UploadTest {
             val response = upload(fileName = "cat.p<h>p")
 
             val name = response.bodyAsText().removePrefix("https://i.example.com/")
-            assertTrue(name.matches(Regex("[0-9a-z]+")), name)
+            assertTrue(name.matches(Regex("[0-9a-z]{8}")), name)
         }
 
     @Test
