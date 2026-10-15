@@ -1,40 +1,56 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
-val ktorVersion: String by project
-val kotlinVersion: String by project
-val logbackVersion: String by project
-
 plugins {
-    application
-    kotlin("jvm") version "1.6.20"
-    id("com.github.johnrengelman.shadow") version "7.1.1"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.ktor)
+    alias(libs.plugins.spotless)
 }
 
 group = "com.flxrs"
-version = "0.0.2"
+
 application {
-    mainClass.set("io.ktor.server.netty.EngineMain")
+    mainClass.set("com.flxrs.ApplicationKt")
 }
 
 repositories {
-    mavenLocal()
     mavenCentral()
 }
 
 dependencies {
-    implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-server-auth:$ktorVersion")
-    implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
-    implementation("io.ktor:ktor-server-default-headers:$ktorVersion")
-    implementation("ch.qos.logback:logback-classic:$logbackVersion")
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.netty)
+    implementation(libs.ktor.server.auth)
+    implementation(libs.ktor.server.call.logging)
+    implementation(libs.ktor.server.metrics.micrometer)
+    implementation(libs.micrometer.registry.prometheus)
+    implementation(libs.logback.classic)
+
+    testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.kotlin.test)
 }
 
-tasks.withType<ShadowJar> {
-    archiveBaseName.set("i-kt")
-    archiveClassifier.set("")
-    archiveVersion.set("")
-    manifest {
-        attributes(Pair("Main-Class", "io.ktor.server.netty.EngineMain"))
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        allWarningsAsErrors = true
+    }
+}
+
+ktor {
+    fatJar {
+        archiveFileName.set("i-kt-all.jar")
+    }
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+spotless {
+    kotlin {
+        target("src/**/*.kt")
+        ktlint(libs.versions.ktlint.get())
+    }
+    kotlinGradle {
+        target("*.gradle.kts")
+        ktlint(libs.versions.ktlint.get())
     }
 }

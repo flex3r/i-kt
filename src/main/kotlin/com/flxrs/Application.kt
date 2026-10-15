@@ -1,56 +1,57 @@
 package com.flxrs
 
-import io.ktor.http.*
-import io.ktor.http.content.*
-import io.ktor.server.application.*
-import io.ktor.server.auth.*
-import io.ktor.server.http.content.*
-import io.ktor.server.plugins.callloging.*
-import io.ktor.server.plugins.defaultheaders.*
-import io.ktor.server.request.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.yield
-import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.PartData
+import io.ktor.http.content.forEachPart
+import io.ktor.server.application.Application
+import io.ktor.server.application.install
+import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.UserIdPrincipal
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.basic
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.metrics.micrometer.MicrometerMetrics
+import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.request.receiveMultipart
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.RoutingContext
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.routing
+import io.micrometer.core.instrument.DistributionSummary
+import io.micrometer.prometheusmetrics.PrometheusConfig
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
+import java.security.MessageDigest
 
-fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
+fun main() {
+    val config = UploadConfig.fromEnvironment(System.getenv())
+    embeddedServer(Netty, port = config.port) {
+        uploadModule(config)
+    }.start(wait = true)
+}
 
-@Suppress("unused")
-fun Application.dank() {
-    val basicAuthUser = environment.config
-        .propertyOrNull("ktor.deployment.basicAuthUser")
-        ?.getString() ?: "flxrs"
-    val basicAuthPassword = environment.config
-        .propertyOrNull("ktor.deployment.basicAuthPassword")
-        ?.getString() ?: "dank"
+fun Application.uploadModule(config: UploadConfig) {
+    val storage = UploadStorage(config.directory)
+    val registry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
+    val uploadSizes =
+        DistributionSummary
+            .builder("upload.size")
+            .baseUnit("bytes")
+            .register(registry)
 
-    val validCredentials = UserPasswordCredential(basicAuthUser, basicAuthPassword)
-
-    val uploadUrl = environment.config
-        .propertyOrNull("ktor.deployment.uploadUrl")
-        ?.getString() ?: "http://localhost:8080/"
-    val uploadPath = environment.config
-        .propertyOrNull("ktor.deployment.uploadDirectory")
-        ?.getString() ?: "i"
-
-    val uploadDirectory = File(uploadPath).also { dir ->
-        if (!dir.exists()) dir.mkdir()
-    }
-
-    install(DefaultHeaders) {
-        header("User-Agent", "i-kt/1.0")
-    }
     install(CallLogging)
+    install(MicrometerMetrics) {
+        this.registry = registry
+    }
     install(Authentication) {
         basic {
             realm = "i-kt"
             validate { credentials ->
-                credentials.validateCredentials(validCredentials)
+                when {
+                    credentials.name == config.user && credentials.password.constantTimeEquals(config.password) -> UserIdPrincipal(credentials.name)
+                    else -> null
+                }
             }
         }
     }
@@ -59,73 +60,38 @@ fun Application.dank() {
         get("/") {
             call.respondText("FeelsDankMan")
         }
-
+        get("/metrics") {
+            call.respondText(registry.scrape())
+        }
         authenticate {
             post("/upload") {
-                var partData: PartData.FileItem? = null
-                call.receiveMultipart().forEachPart { part ->
-                    when (part) {
-                        is PartData.FileItem -> partData = part
-                        else -> part.dispose()
+                when (val upload = receiveUpload(storage, config.maxFileSize)) {
+                    null -> {
+                        call.respondText("No file in upload", status = HttpStatusCode.BadRequest)
+                    }
+
+                    else -> {
+                        uploadSizes.record(upload.size.toDouble())
+                        call.respondText("${config.publicUrl}${upload.name}")
                     }
                 }
-
-                val fileName = partData?.copyImage(uploadDirectory) ?: call.respond(HttpStatusCode.BadRequest)
-                call.respondText("$uploadUrl$fileName")
             }
         }
-
-        static {
-            files(uploadDirectory)
-        }
     }
 }
 
-private fun UserPasswordCredential.validateCredentials(valid: UserPasswordCredential): UserIdPrincipal? = when {
-    name == valid.name && password == valid.password -> UserIdPrincipal(name)
-    else -> null
-}
-
-private suspend fun PartData.FileItem.copyImage(uploadDir: File): String? {
-    val requestFileName = originalFileName ?: return null
-    val extension = File(requestFileName).extension
-
-    val fileName = "${generateFileName()}.$extension"
-    val file = File(uploadDir, fileName)
-
-    streamProvider().use { input ->
-        file.outputStream().buffered().use { output ->
-            input.copyToSuspend(output)
+private suspend fun RoutingContext.receiveUpload(
+    storage: UploadStorage,
+    maxFileSize: Long,
+): StoredUpload? {
+    var upload: StoredUpload? = null
+    call.receiveMultipart(formFieldLimit = maxFileSize).forEachPart { part ->
+        when {
+            part is PartData.FileItem && upload == null -> upload = storage.save(part.originalFileName, part.provider())
         }
+        part.release()
     }
-    dispose()
-    return fileName
+    return upload
 }
 
-private fun generateFileName(): String = System.currentTimeMillis().toString(radix = 36)
-
-@Suppress("BlockingMethodInNonBlockingContext")
-suspend fun InputStream.copyToSuspend(
-    out: OutputStream,
-    bufferSize: Int = DEFAULT_BUFFER_SIZE,
-    yieldSize: Int = 4 * 1024 * 1024,
-    dispatcher: CoroutineDispatcher = Dispatchers.IO,
-): Long {
-    return withContext(dispatcher) {
-        val buffer = ByteArray(bufferSize)
-        var bytesCopied = 0L
-        var bytesAfterYield = 0L
-        while (true) {
-            val bytes = read(buffer).takeIf { it >= 0 } ?: break
-            out.write(buffer, 0, bytes)
-            if (bytesAfterYield >= yieldSize) {
-                yield()
-                bytesAfterYield %= yieldSize
-            }
-            bytesCopied += bytes
-            bytesAfterYield += bytes
-        }
-
-        bytesCopied
-    }
-}
+private fun String.constantTimeEquals(other: String): Boolean = MessageDigest.isEqual(toByteArray(), other.toByteArray())
