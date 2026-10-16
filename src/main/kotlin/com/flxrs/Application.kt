@@ -13,6 +13,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.metrics.micrometer.MicrometerMetrics
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.request.path
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
@@ -40,7 +41,9 @@ fun Application.uploadModule(config: UploadConfig) {
             .baseUnit("bytes")
             .register(registry)
 
-    install(CallLogging)
+    install(CallLogging) {
+        filter { call -> call.request.path() != "/metrics" }
+    }
     install(MicrometerMetrics) {
         this.registry = registry
     }
